@@ -5,23 +5,23 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+  workflow_dispatch:   # 👈 adds the button
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: configure
-      run: ./configure
+      - name: configure
+        run: ./configure
 
-    - name: Install dependencies
-      run: make
+      - name: Compile
+        run: make
 
-    - name: Run check
-      run: make check
+      - name: Run check
+        run: make check
 
-    - name: Run distcheck
-      run: make distcheck
+      - name: Run distcheck
+        run: make distcheck
