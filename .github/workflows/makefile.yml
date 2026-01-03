@@ -8,54 +8,63 @@ on:
   workflow_dispatch:
 
 env:
-  OPENWRT_SDK: "openwrt-sdk-24.10.1-*.Linux-x86_64"   # adjust for version as needed
+  OPENWRT_VERSION: "24.10.1"
+  TARGET: "x86/64"
+  SDK_DIR: "openwrt-sdk-24.10.1-x86-64_gcc-13.3.0_musl.Linux-x86_64"
 
 jobs:
-  build-ipk:
+  build:
     runs-on: ubuntu-latest
-    outputs:
-      status: ${{ steps.build.outputs.status }}
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-    - name: Setup build deps
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential libncurses-dev gcc g++ git wget unzip zstd python3 python3-pyelftools
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libncurses-dev \
+            zlib1g-dev \
+            gawk \
+            git \
+            wget \
+            unzip \
+            file \
+            python3 \
+            python3-pyelftools \
+            rsync
 
-    - name: Download OpenWrt SDK
-      run: |
-        wget https://downloads.openwrt.org/releases/24.10.1/targets/x86/64/openwrt-sdk-24.10.1-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.xz
-        tar -xJf openwrt-sdk-24.10.1-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.xz
+      - name: Download OpenWrt SDK
+        run: |
+          wget https://downloads.openwrt.org/releases/${OPENWRT_VERSION}/targets/${TARGET}/openwrt-sdk-${OPENWRT_VERSION}-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.xz
+          tar -xJf openwrt-sdk-${OPENWRT_VERSION}-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.xz
 
-    - name: Copy package to SDK
-      run: |
-        cp -r . "${{ env.OPENWRT_SDK }}/package/luci-app-openvpn-server"
+      - name: Prepare SDK feeds
+        working-directory: ${{ env.SDK_DIR }}
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-    - name: Update feeds
-      working-directory: ${{ env.OPENWRT_SDK }}
-      run: |
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
+      - name: Copy package into SDK
+        run: |
+          cp -r . "${SDK_DIR}/package/luci-app-openvpn-server"
 
-    - name: Configure package
-      working-directory: ${{ env.OPENWRT_SDK }}
-      run: |
-        # create minimal config to enable this package
-        echo "CONFIG_PACKAGE_luci-app-openvpn-server=y" > .config
+      - name: Configure build
+        working-directory: ${{ env.SDK_DIR }}
+        run: |
+          echo "CONFIG_PACKAGE_luci-app-openvpn-server=y" > .config
+          make defconfig
 
-    - name: Build package
-      id: build
-      working-directory: ${{ env.OPENWRT_SDK }}
-      run: |
-        make package/luci-app-openvpn-server/compile V=s
-      continue-on-error: false
+      - name: Compile package
+        working-directory: ${{ env.SDK_DIR }}
+        run: |
+          make package/luci-app-openvpn-server/compile V=s
 
-    - name: Collect built IPKs
-      uses: actions/upload-artifact@v3
-      with:
-        name: openvpn-server-ipks
-        path: |
-          ${{ env.OPENWRT_SDK }}/bin/packages/**/luci-app-openvpn-server*.ipk
+      - name: Upload IPK artifact
+        uses: actions/upload-artifact@v4   # ✅ NOT deprecated
+        with:
+          name: luci-app-openvpn-server-ipk
+          path: |
+            ${{ env.SDK_DIR }}/bin/packages/**/luci-app-openvpn-server*.ipk
